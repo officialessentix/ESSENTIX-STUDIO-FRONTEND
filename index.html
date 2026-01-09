@@ -302,7 +302,8 @@
 
     async function fetchArchive() {
     try {
-        const response = await fetch('https://essentix-vault.onrender.com/api/products');
+        const response = await fetch('https://essentix-backend.onrender.com/api/products');
+
         const data = await response.json();
         
         // We filter by these EXACT lowercase names
@@ -488,7 +489,7 @@ async function submitOrder() {
     }
 
     try {
-        const response = await fetch('https://essentix-vault.onrender.com/api/orders', {
+        const response = await fetch('https://essentix-backend.onrender.com/api/orders', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(orderData)
