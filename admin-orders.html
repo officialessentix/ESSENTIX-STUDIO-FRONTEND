@@ -2,6 +2,8 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <script src="https://cdn.socket.io/4.7.1/socket.io.min.js"></script>
+
     <title>ESSENTIX Admin – Orders</title>
     <style>
         body {
@@ -47,9 +49,12 @@
 
 <script>
 const API = "https://essentix-backend.onrender.com";
-
 const ADMIN_KEY = "essentix-secret";
 
+const socket = io("https://essentix-backend.onrender.com"); // Replace with your backend URL
+
+
+// Load orders from backend
 function loadOrders() {
     fetch(`${API}/api/admin/orders`, {
         headers: { "x-admin-key": ADMIN_KEY }
@@ -69,12 +74,12 @@ function loadOrders() {
 
         data.forEach(order => {
             table.innerHTML += `
-                <tr>
+                <tr data-id="${order._id}">
                     <td>${order.customerName}</td>
                     <td>${order.email}</td>
                     <td>₹${order.total}</td>
                     <td>
-                        <select onchange="updateStatus('${order._id}', this.value)">
+                        <select class="status-dropdown" data-id="${order._id}">
                             <option ${order.status === "Pending" ? "selected" : ""}>Pending</option>
                             <option ${order.status === "Shipped" ? "selected" : ""}>Shipped</option>
                             <option ${order.status === "Delivered" ? "selected" : ""}>Delivered</option>
@@ -85,21 +90,102 @@ function loadOrders() {
                 </tr>
             `;
         });
-    });
+
+        // Attach event listeners to dropdowns
+        document.querySelectorAll('.status-dropdown').forEach(dropdown => {
+            dropdown.dataset.previousStatus = dropdown.value;
+            dropdown.addEventListener('change', (e) => {
+                const newStatus = e.target.value;
+                const orderId = e.target.dataset.id;
+                updateStatus(orderId, newStatus, e.target);
+                e.target.dataset.previousStatus = newStatus;
+            });
+        });
+    })
+    .catch(err => console.error("Failed to load orders:", err));
 }
 
-function updateStatus(id, status) {
+// Update status for a single order with debug logging
+function updateStatus(id, status, dropdown) {
     fetch(`${API}/api/admin/order-status/${id}`, {
-        method: "PUT",
+        method: "PUT", // Make sure your backend expects PUT
         headers: {
             "Content-Type": "application/json",
             "x-admin-key": ADMIN_KEY
         },
         body: JSON.stringify({ status })
-    }).then(() => loadOrders());
+    })
+    .then(async res => {
+        const data = await res.json();
+        console.log("Backend response:", data, "Status code:", res.status);
+
+        if (!res.ok) throw new Error(data.message || "Update failed");
+
+        // Flash the row green for confirmation
+        const row = dropdown.closest('tr');
+        row.style.backgroundColor = '#2ecc71'; // light green
+        setTimeout(() => row.style.backgroundColor = '', 500);
+    })
+    .catch(err => {
+        alert("Failed to update status. See console.");
+        console.error("Error updating status:", err);
+        dropdown.value = dropdown.dataset.previousStatus;
+    });
 }
 
+// New order received
+socket.on('new-order', (order) => {
+    console.log("New order:", order);
+    addOrderToTable(order);
+});
+
+// Status updated
+socket.on('status-updated', (order) => {
+    const row = document.querySelector(`tr[data-id='${order._id}']`);
+    if (row) {
+        row.querySelector('select').value = order.status;
+        row.style.backgroundColor = '#2ecc71';
+        setTimeout(() => row.style.backgroundColor = '', 500);
+    }
+});
+
+
+function addOrderToTable(order) {
+    const table = document.getElementById("orders");
+    table.innerHTML += `
+        <tr data-id="${order._id}">
+            <td>${order.customerName}</td>
+            <td>${order.email}</td>
+            <td>₹${order.total}</td>
+            <td>
+                <select class="status-dropdown" data-id="${order._id}">
+                    <option ${order.status === "Pending" ? "selected" : ""}>Pending</option>
+                    <option ${order.status === "Shipped" ? "selected" : ""}>Shipped</option>
+                    <option ${order.status === "Delivered" ? "selected" : ""}>Delivered</option>
+                    <option ${order.status === "Cancelled" ? "selected" : ""}>Cancelled</option>
+                </select>
+            </td>
+            <td>${new Date(order.date).toLocaleString()}</td>
+        </tr>
+    `;
+
+    // Attach event listener to this dropdown
+    const dropdown = table.querySelector(`select[data-id='${order._id}']`);
+    dropdown.dataset.previousStatus = dropdown.value;
+    dropdown.addEventListener('change', (e) => {
+        const newStatus = e.target.value;
+        const orderId = e.target.dataset.id;
+        updateStatus(orderId, newStatus, e.target);
+        e.target.dataset.previousStatus = newStatus;
+    });
+}
+
+
+// Initial load
 loadOrders();
+
+
+
 </script>
 
 </body>
