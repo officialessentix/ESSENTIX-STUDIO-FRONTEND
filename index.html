@@ -306,9 +306,9 @@
         const data = await response.json();
 
         // ✅ MATCH BACKEND CATEGORY VALUES
-        LIVE_DATA.shirts = data.filter(p => p.category === 'shirt');
-        LIVE_DATA.tees   = data.filter(p => p.category === 'tee');
-        LIVE_DATA.sweats = data.filter(p => p.category === 'sweat');
+        LIVE_DATA.shirts = data.filter(p => p.category === 'shirts');
+        LIVE_DATA.tees   = data.filter(p => p.category === 'tees');
+        LIVE_DATA.sweats = data.filter(p => p.category === 'sweats');
 
         renderGrids();
         initMagnetic();
