@@ -6,7 +6,10 @@
     <title>ESSENTIX // STUDIO ARCHIVE</title>
     
     <link href="https://fonts.googleapis.com/css2?family=Syncopate:wght@700&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script> 
 
     <style>
         :root {
@@ -126,6 +129,15 @@
         .mag-btn { color: #fff; font-weight: 400; font-size: 9px; font-family: 'Syncopate'; padding: 10px 18px; background: none; cursor: pointer; }
         
         footer { padding: 80px 6%; background: #fff; border-top: 1px solid #eee; text-align: center; }
+
+        .wish-btn.active {
+    color: #ff3e3e !important; /* Turns the heart red when active */
+    transform: scale(1.2);
+}
+
+#wishlist-sidebar {
+    box-shadow: -10px 0 30px rgba(0,0,0,0.05);
+}
     </style>
 </head>
 <body>
@@ -133,7 +145,10 @@
 <header>
     <div class="hamburger" onclick="toggleMenu(true)"><span></span><span></span></div>
     <div class="logo" onclick="window.location.reload()">ESSENTIX</div>
-    <div class="bag-trigger" onclick="toggleBag(true)">BAG (<span id="bag-count">0</span>)</div>
+    <div style="display: flex; gap: 20px;">
+        <div class="bag-trigger" onclick="toggleWishlist(true)">WISH ( <span id="wish-count">0</span> )</div>
+        <div class="bag-trigger" onclick="toggleBag(true)">BAG (<span id="bag-count">0</span>)</div>
+    </div>
 </header>
 
 <div id="menu-overlay">
@@ -223,7 +238,9 @@
             <div class="detail-row" onclick="this.classList.toggle('active')"><div class="detail-header">DESCRIPTION <span>+</span></div><div class="detail-body">Architectural silhouette with dropped shoulders. Perfect for 2026 Archive looks.</div></div>
             <div class="detail-row" onclick="this.classList.toggle('active')"><div class="detail-header">MATERIAL <span>+</span></div><div class="detail-body">100% Heavyweight Cotton. Sourced ethically.</div></div>
             <div class="detail-row" onclick="this.classList.toggle('active')"><div class="detail-header">CARE <span>+</span></div><div class="detail-body">Machine wash cold. Do not tumble dry.</div></div>
-            <button class="btn-black" id="add-to-bag-btn" style="margin-top:40px;" onclick="addToBag()">ADD TO BAG</button>
+            <button class="btn-black" id="add-to-bag-btn" style="margin-top:40px;" onclick="addToBag(cur)">ADD TO BAG</button>
+
+
         </div>
     </div>
 </div>
@@ -253,6 +270,16 @@
     <button class="btn-black" onclick="showCheckout()" style="margin-top:20px;">PROCEED TO CHECKOUT</button>
 </div>
 
+<div id="wishlist-sidebar"
+    style="position: fixed; inset: 0; left: auto; right: -100%; width: 100%; background: #fff; z-index: 5000; transition: 0.5s var(--ease); padding: 100px 6% 40px; display: flex; flex-direction: column;">
+    <div
+        style="display:flex; justify-content:space-between; margin-bottom:40px; font-family:'Syncopate'; font-size:12px;">
+        <span>SAVED ARCHIVE</span>
+        <span onclick="toggleWishlist(false)" style="cursor:pointer;">CLOSE</span>
+    </div>
+    <div id="wish-list-content" style="flex:1; overflow-y:auto;"></div>
+</div>
+
 <div id="checkout-view">
     <div class="bill-card">
         <h3>INVOICE SUMMARY</h3>
@@ -261,6 +288,18 @@
         <div class="bill-row" id="disc-row" style="display:none; color:var(--accent);"><span>COUPON DISCOUNT</span><span id="c-disc">-₹0</span></div>
         <div class="bill-row"><span>DELIVERY</span><span>₹150</span></div>
         <div class="bill-row" style="font-size:28px; font-weight:600; border-top:1px solid #000; padding-top:20px;"><span>TOTAL</span><span id="c-total">₹0</span></div>
+    </div>
+    <div style="margin-bottom: 30px;">
+        <h4 style="margin-bottom:15px; color:#888; font-size: 12px; letter-spacing: 1px;">DELIVERY METHOD</h4>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+            <div class="size-btn active" id="ship-std" onclick="updateShipUI('standard')">
+                <strong>Standard</strong><br><span style="font-size: 10px; opacity: 0.7;">3-5 Days (₹150)</span>
+            </div>
+            <div class="size-btn" id="ship-exp" onclick="updateShipUI('express')">
+                <strong>Express</strong><br><span style="font-size: 10px; opacity: 0.7;">Next Day (+₹250)</span>
+            </div>
+        </div>
+        <p id="free-ship-promo" style="font-size: 11px; color: #2ecc71; margin-top: 10px; font-weight: 500;"></p>
     </div>
     <div class="split-layout">
         <div class="form-section">
@@ -298,6 +337,7 @@
 <script>
 let LIVE_DATA = { shirts: [], tees: [], sweats: [] };
 let bag = [];
+    let shippingType = 'standard'; // Default shipping is standard
 let cur = null;
 let discount = 0;
 
@@ -330,38 +370,61 @@ function initMagnetic() {
     });
 }
 
-function renderGrids(f = "") {
-    const order = ['shirts', 'tees', 'sweats'];
+    function renderGrids(f = "") {
+        const order = ['shirts', 'tees', 'sweats'];
 
-    order.forEach(cat => {
-        const list = LIVE_DATA[cat].filter(x => x.name.toLowerCase().includes(f.toLowerCase()));
+        order.forEach(cat => {
+            const list = LIVE_DATA[cat].filter(x => x.name.toLowerCase().includes(f.toLowerCase()));
+            const gridId = cat === 'shirts' ? 'grid-shirts' : (cat === 'tees' ? 'grid-tees' : 'grid-sweats');
+            const container = document.getElementById(gridId);
 
-        const gridId = cat === 'shirts' ? 'grid-shirts' : (cat === 'tees' ? 'grid-tees' : 'grid-sweats');
-        const container = document.getElementById(gridId);
+            if (container) {
+                container.innerHTML = list.map(p => {
+                    // SMART CHECK: See if this item is in the wishlist
+                    const isWished = wishlist.some(w => w._id === p._id);
 
-        if (container) {
-            container.innerHTML = list.map(p => `
+                    return `
                 <div class="card">
-                    <div class="wish-btn" onclick="event.stopPropagation(); this.classList.toggle('active')">❤</div>
+                    <div class="wish-btn ${isWished ? 'active' : ''}" 
+                         onclick="event.stopPropagation(); toggleWishItem('${p._id}')">❤</div>
+                    
                     <div onclick="openQV('${cat}', '${p._id}')">
                         <div class="img-box"><img src="${p.image}"></div>
                         <span class="p-name">${p.name}</span>
                         <span class="p-price">₹${p.price}</span>
                     </div>
-                </div>`).join('');
-        }
-    });
-}
+                </div>`;
+                }).join('');
+            }
+        });
+    }
 
-function sendSupport() {
-    const n = document.getElementById('c-name').value;
-    const e = document.getElementById('c-email').value;
-    if(!n || !e) { alert('PLEASE FILL ALL FIELDS'); return; }
-    alert(`Thank you ${n}, we have received your request and will contact you at ${e}.`);
-    document.getElementById('c-name').value = '';
-    document.getElementById('c-email').value = '';
-    document.getElementById('c-msg').value = '';
-}
+    function sendSupport() {
+        const n = document.getElementById('c-name').value;
+        const e = document.getElementById('c-email').value;
+        const m = document.getElementById('c-msg').value;
+
+        if (!n || !e || !m) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Fill All Fields',
+                text: 'Please enter your name, email, and message.'
+            });
+            return;
+        }
+
+        Swal.fire({
+            icon: 'success',
+            title: 'Message Sent!',
+            text: `Thank you ${n}, we will contact you at ${e}.`,
+            timer: 2500,
+            showConfirmButton: false
+        });
+
+        document.getElementById('c-name').value = '';
+        document.getElementById('c-email').value = '';
+        document.getElementById('c-msg').value = '';
+    }
 
 function searchItems(v) { renderGrids(v); }
 
@@ -373,37 +436,117 @@ function sortData(v) {
     renderGrids();
 }
 
-function applyPromo() {
-    if(document.getElementById('cp-input').value.toUpperCase() === 'ESSENTIX10') {
-        discount = 500; alert('₹500 DISCOUNT APPLIED!'); updateTotals();
-    } else { alert('INVALID CODE'); }
-}
-
-function trackOrder() {
-    const id = document.getElementById('track-id').value;
-    const status = document.getElementById('track-status');
-    status.style.display = 'block';
-    if(id.toUpperCase() === 'EX2026') {
-        status.innerHTML = "STATUS: <span style='color:#0f0'>IN TRANSIT - EXPECTED TOMORROW</span>";
-    } else {
-        status.innerHTML = "STATUS: <span style='color:var(--accent)'>ORDER ID NOT FOUND</span>";
+    function applyPromo() {
+        const code = document.getElementById('cp-input').value.toUpperCase();
+        if (code === 'ESSENTIX10') {
+            discount = 500;
+            updateTotals();
+            Swal.fire({
+                icon: 'success',
+                title: 'Discount Applied!',
+                text: '₹500 discount has been applied to your order.',
+                timer: 2000,
+                showConfirmButton: false
+            });
+        } else {
+            Swal.fire({
+                icon: 'error',
+                title: 'Invalid Code',
+                text: 'Please enter a valid promo code.'
+            });
+        }
     }
-}
 
-function updateTotals() {
-    let sub = bag.reduce((a,b)=> a + (b.price * b.qty), 0);
-    document.getElementById('c-sub').innerText = `₹${sub}`;
-    if(discount > 0) {
-        document.getElementById('disc-row').style.display = 'flex';
-        document.getElementById('c-disc').innerText = `-₹${discount}`;
-    }
-    document.getElementById('c-total').innerText = `₹${sub + 150 - discount}`;
-}
+    async function trackOrder() {
+            const orderId = document.getElementById('track-id').value.trim();
 
-window.onload = () => {
-    bag = [];
-    fetchArchive();
-};
+            if (!orderId) {
+                Swal.fire({ icon: 'warning', title: 'Enter ID', text: 'Please paste your Order ID.' });
+                return;
+            }
+
+            try {
+                // Calling our new bridge
+                const res = await fetch(`https://essentix-backend.onrender.com/api/orders/track/${orderId}`);
+                const data = await res.json();
+
+                if (!res.ok) {
+                    Swal.fire({ icon: 'error', title: 'Not Found', text: data.message });
+                    return;
+                }
+
+                // Professional status colors
+                const colors = {
+                    "Pending": "#f1c40f",
+                    "Shipped": "#3498db",
+                    "Delivered": "#2ecc71",
+                    "Cancelled": "#e74c3c"
+                };
+
+                Swal.fire({
+                    title: 'ARCHIVE STATUS',
+                    html: `
+                <div style="text-align:left; font-family:'Outfit';">
+                    <p><strong>Package for:</strong> ${data.customerName}</p>
+                    <p><strong>Current Status:</strong> <span style="color:${colors[data.status] || '#000'}">${data.status}</span></p>
+                    <p><strong>Ordered on:</strong> ${new Date(data.date).toLocaleDateString()}</p>
+                </div>
+            `,
+                    confirmButtonText: 'CLOSE',
+                    confirmButtonColor: '#000'
+                });
+
+            } catch (error) {
+                Swal.fire({ icon: 'error', title: 'Error', text: 'System offline. Try later.' });
+            }
+        }
+
+
+  
+    
+
+    // Add this variable at the top of your script
+   // let shippingType = 'standard';
+
+    function updateTotals() {
+            // 1. Calculate how much the clothes cost
+            let sub = bag.reduce((a, b) => a + (b.price * b.qty), 0);
+
+            // 2. Handle the "Free Shipping" message
+            const promoText = document.getElementById('free-ship-promo');
+            if (promoText) {
+                if (sub < 1200) {
+                    let diff = 1200 - sub;
+                    promoText.innerText = `Add ₹${diff} more for FREE Standard Shipping!`;
+                    promoText.style.color = "#ff3e3e"; // Red
+                } else {
+                    promoText.innerText = "✓ You've unlocked FREE Standard Shipping!";
+                    promoText.style.color = "#2ecc71"; // Green
+                }
+            }
+
+            // 3. Logic for shipping fees
+            let shippingFee = (sub >= 1200) ? 0 : 150; // If sub >= 1200, it's 0, else 150
+            let deliveryExtra = (shippingType === 'express') ? 250 : 0; // If Express, add 250
+            let finalShipping = shippingFee + deliveryExtra;
+
+            // 4. Update the numbers on the screen
+            document.getElementById('c-sub').innerText = `₹${sub}`;
+
+            if (discount > 0) {
+                document.getElementById('disc-row').style.display = 'flex';
+                document.getElementById('c-disc').innerText = `-₹${discount}`;
+            }
+
+            let total = sub + finalShipping - discount;
+            document.getElementById('c-total').innerText = `₹${total}`;
+        }
+
+    window.onload = () => {
+        bag = [];
+        fetchArchive(); // This calls renderGrids inside it
+        renderWishlist(); // NEW: This ensures the 'WISH (count)' in header is correct on load
+    };
 
 function toggleMenu(s) { document.getElementById('menu-overlay').style.display = s ? 'flex' : 'none'; }
 function toggleBag(s) { document.getElementById('bag-sidebar').classList.toggle('open', s); }
@@ -419,20 +562,54 @@ function openQV(cat, id) {
     toggleQV(true);
 }
 
+    function updateShipUI(type) {
+        shippingType = type; // This saves which one they clicked (Standard or Express)
+
+        // This part makes the clicked button turn black (active) and the other one white
+        document.getElementById('ship-std').classList.toggle('active', type === 'standard');
+        document.getElementById('ship-exp').classList.toggle('active', type === 'express');
+
+        updateTotals(); // This immediately recalculates the final price
+    }
+
+
 function selectSize(el, s) {
     document.querySelectorAll('.size-btn').forEach(b => b.classList.remove('active'));
     el.classList.add('active'); cur.size = s;
 }
 
-function addToBag() {
-    if(!cur.size) { alert('CHOOSE SIZE'); return; }
-    const ex = bag.find(x => x._id === cur._id && x.size === cur.size);
-    if(ex) ex.qty++; else bag.push({...cur});
-    
-    confetti({ particleCount: 150, origin: { y: 0.8 }, colors: ['#000', '#ff3e3e', '#ffffff'], spread: 70 });
-    
-    updateBag(); toggleQV(false); toggleBag(true);
-}
+
+    function addToBag(product) {
+        if (!product) return;
+
+        // Check if product already exists in bag (same id + size)
+        const existing = bag.find(item => item.id === product._id && item.size === product.size);
+
+        if (existing) {
+            existing.qty++;
+        } else {
+            bag.push({ ...product, qty: 1, id: product._id });
+        }
+
+        updateBag();
+
+        // Professional mini-popup at bottom right
+        const popup = document.createElement('div');
+        popup.innerText = `${product.name} (${product.size}) added to bag!`;
+        popup.style.cssText = `
+        position: fixed; bottom: 20px; right: 20px; 
+        background: #2ecc71; color: white; padding: 10px 15px; 
+        border-radius: 6px; font-weight: 500; box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        opacity: 0; transform: translateY(20px); transition: all 0.3s;
+        z-index: 9999;
+    `;
+        document.body.appendChild(popup);
+
+        setTimeout(() => { popup.style.opacity = 1; popup.style.transform = 'translateY(0)'; }, 10);
+        setTimeout(() => { popup.style.opacity = 0; popup.style.transform = 'translateY(20px)'; }, 1500);
+        setTimeout(() => popup.remove(), 1800);
+    }
+
 
 function updateBag() {
     document.getElementById('bag-count').innerText = bag.reduce((a,b)=>a+b.qty,0);
@@ -449,59 +626,195 @@ function updateBag() {
 
 function changeQty(i, d) { bag[i].qty += d; if(bag[i].qty < 1) bag.splice(i, 1); updateBag(); }
 
-function showCheckout() {
-    if(bag.length === 0) return;
-    toggleBag(false); 
-    document.getElementById('home-view').style.display = 'none';
-    document.getElementById('checkout-view').style.display = 'block';
-    document.getElementById('bill-items').innerHTML = bag.map(it => `<div class="bill-row"><span>${it.name} (x${it.qty})</span><span>₹${it.price * it.qty}</span></div>`).join('');
-    updateTotals();
-    window.scrollTo(0,0);
-}
+    function showCheckout() {
+        if (bag.length === 0) {
+            Swal.fire({ icon: 'info', title: 'Bag is empty', text: 'Add items before checkout!' });
+            return;
+        }
 
-async function submitOrder() {
+        toggleBag(false);
+        document.getElementById('home-view').style.display = 'none';
+        document.getElementById('checkout-view').style.display = 'block';
+
+        // Fill invoice items dynamically
+        document.getElementById('bill-items').innerHTML = bag.map(it => `
+        <div class="bill-row">
+            <span>${it.name} (${it.size}) x${it.qty}</span>
+            <span>₹${it.price * it.qty}</span>
+        </div>
+    `).join('');
+
+        updateTotals();
+        window.scrollTo(0, 0);
+    }
+
+
+  async function submitOrder() {
+        const totalAmount = parseInt(document.getElementById('c-total').innerText.replace('₹', ''));
+        const formSection = document.querySelector('.form-section');
+        const inputs = formSection.querySelectorAll('input');
+
+        // Basic validation
+        if (!inputs[0].value || !inputs[1].value || !inputs[4].value) {
+            Swal.fire({ icon: 'warning', title: 'Details Missing', text: 'Please fill name, email, and address.' });
+            return;
+        }
+
+        try {
+            // 1. Create the Razorpay Order on your backend
+            const response = await fetch('https://essentix-backend.onrender.com/api/payments/create-order', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ amount: totalAmount })
+            });
+
+            const rzpOrder = await response.json();
+
+            // 2. Configure the Razorpay Checkout Popup
+            const options = {
+                "key": "rzp_test_YOUR_ACTUAL_KEY_ID_HERE", // PASTE YOUR KEY ID HERE
+                "amount": rzpOrder.amount,
+                "currency": "INR",
+                "name": "ESSENTIX // STUDIO",
+                "description": "Archive Order Purchase",
+                "order_id": rzpOrder.id,
+                "handler": function (response) {
+                    // This ONLY runs if the payment is successful
+                    finalizeOrder(response.razorpay_payment_id);
+                },
+                "prefill": {
+                    "name": inputs[0].value,
+                    "email": inputs[1].value
+                },
+                "theme": { "color": "#000000" }
+            };
+
+            const rzp = new Razorpay(options);
+            rzp.open();
+
+        } catch (err) {
+            Swal.fire({ icon: 'error', title: 'Payment Init Failed', text: 'Make sure your backend is awake.' });
+        }
+    }
+
+    async function finalizeOrder(paymentId) {
     const formSection = document.querySelector('.form-section');
     const inputs = formSection.querySelectorAll('input');
-    
-    const orderData = {
-        customerName: inputs[0].value, 
-        email: inputs[1].value,        
-        pincode: inputs[2].value,      
-        city: inputs[3].value,         
-        address: inputs[4].value,      
-        landmark: inputs[5].value || "N/A",
+
+    const finalOrderData = {
+        customerName: inputs[0].value,
+        email: inputs[1].value,
+        pincode: inputs[2].value,
+        city: inputs[3].value,
+        address: inputs[4].value,
         items: bag,
-        total: bag.reduce((a, b) => a + (b.price * b.qty), 0) + 150 - discount,
-        status: "Pending"
+        total: parseInt(document.getElementById('c-total').innerText.replace('₹', '')),
+        paymentId: paymentId, // We store this as proof of payment
+        status: "Paid & Pending"
     };
 
-    if (!orderData.customerName || !orderData.email || !orderData.address) {
-        alert("PLEASE FILL IN YOUR NAME, EMAIL, AND ADDRESS");
-        return;
-    }
+    // Save the successful order to your database
+    const res = await fetch('https://essentix-backend.onrender.com/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(finalOrderData)
+    });
 
-    try {
-        const response = await fetch('https://essentix-backend.onrender.com/api/orders', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(orderData)
-        });
-
-        if (response.ok) {
-            confetti({ particleCount: 200, spread: 70, origin: { y: 0.7 } });
-            alert("ORDER PLACED SUCCESSFULLY!");
-            bag = [];
-            window.location.reload(); 
-        } else {
-            const errorText = await response.text();
-            console.error("Server Error:", errorText);
-            alert("VAULT REJECTED THE ORDER. Check your server.");
-        }
-    } catch (err) {
-        console.error("Connection Error:", err);
-        alert("CONNECTION ERROR: Is your Render server awake?");
+    if (res.ok) {
+        confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
+        Swal.fire({ icon: 'success', title: 'PAYMENT SUCCESSFUL', text: 'Your archive piece is secured.' });
+        bag = []; // Clear the bag
+        updateBag();
+        // Return to home view
+        document.getElementById('checkout-view').style.display = 'none';
+        document.getElementById('home-view').style.display = 'block';
     }
 }
+
+
+// 1. Initialize Wishlist from browser memory
+    let wishlist = JSON.parse(localStorage.getItem('essentix_wishlist')) || [];
+
+    // 2. Open/Close the sidebar
+    function toggleWishlist(open) {
+        document.getElementById('wishlist-sidebar').style.right = open ? '0' : '-100%';
+    }
+
+    // 3. The Logic to Add/Remove items
+    function toggleWishItem(productId) {
+        // Find the product in your data arrays
+        const allProducts = [...(LIVE_DATA.shirts || []), ...(LIVE_DATA.tees || []), ...(LIVE_DATA.sweats || [])];
+        const product = allProducts.find(p => p._id === productId);
+
+        if (!product) return;
+
+        const index = wishlist.findIndex(item => item._id === productId);
+
+        if (index === -1) {
+            wishlist.push(product); // Add if not there
+            showToast("ADDED TO ARCHIVE", "#000");
+        } else {
+            wishlist.splice(index, 1); // Remove if already there
+            showToast("REMOVED FROM ARCHIVE", "#888");
+        }
+
+        // Save to browser memory so it stays after refresh
+        localStorage.setItem('essentix_wishlist', JSON.stringify(wishlist));
+
+        renderWishlist(); // Update the sidebar
+        renderGrids();    // Update the heart colors on the main page
+    }
+
+    // 4. Update the Sidebar UI
+    function renderWishlist() {
+        const countEl = document.getElementById('wish-count');
+        if (countEl) countEl.innerText = wishlist.length;
+
+        const container = document.getElementById('wish-list-content');
+        if (wishlist.length === 0) {
+            container.innerHTML = "<p style='font-size:11px; opacity:0.4; letter-spacing:1px;'>YOUR ARCHIVE IS EMPTY.</p>";
+            return;
+        }
+
+        container.innerHTML = wishlist.map(p => `
+        <div style="display:flex; gap:20px; margin-bottom:30px; align-items:center; border-bottom: 1px solid #f0f0f0; padding-bottom:20px;">
+            <img src="${p.image}" style="width:70px; height:90px; object-fit:cover; background:#f9f9f9;">
+            <div style="flex:1;">
+                <div style="font-weight:600; font-size:13px; letter-spacing:1px; text-transform:uppercase;">${p.name}</div>
+                <div style="font-size:12px; color:#888; margin-top:4px;">₹${p.price}</div>
+                <div style="font-size:10px; text-decoration:underline; cursor:pointer; margin-top:10px; font-weight:700;" onclick="openQV('${p.category}', '${p._id}')">VIEW PRODUCT</div>
+            </div>
+            <div onclick="toggleWishItem('${p._id}')" style="cursor:pointer; font-size:14px; opacity:0.3;">✕</div>
+        </div>
+    `).join('');
+    }
+
+    // 5. Update the "Toast" notification
+    function showToast(msg, bg) {
+        const t = document.createElement('div');
+        t.innerText = msg;
+        t.style.cssText = `position:fixed; bottom:30px; left:50%; transform:translateX(-50%); background:${bg}; color:#fff; padding:12px 24px; font-family:'Syncopate'; font-size:10px; letter-spacing:2px; z-index:10000; pointer-events:none;`;
+        document.body.appendChild(t);
+        setTimeout(() => {
+            t.style.transition = "0.5s opacity";
+            t.style.opacity = "0";
+            setTimeout(() => t.remove(), 500);
+        }, 2000);
+    }
+
+    function contactWhatsApp() {
+        let message = "Hello Essentix! I have a query about the Archive Collection.";
+
+        // If they are looking at a specific product in Quick View
+        if (cur) {
+            message = `Hello! I'm interested in the ${cur.name} (Size: ${cur.size || 'Not Selected'}). Can you help me?`;
+        }
+
+        const url = `https://wa.me/91XXXXXXXXXX?text=${encodeURIComponent(message)}`;
+        window.open(url, '_blank');
+    }
+
+
 </script>
 
 </body>
