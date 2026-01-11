@@ -42,6 +42,7 @@
         <th>Customer</th>
         <th>Email</th>
         <th>Total</th>
+        <th>Payment ID</th>
         <th>Status</th>
         <th>Date</th>
     </tr>
@@ -67,29 +68,30 @@ function loadOrders() {
                 <th>Customer</th>
                 <th>Email</th>
                 <th>Total</th>
-                <th>Status</th>
+                <th>Payment ID</th> <th>Status</th>
                 <th>Date</th>
             </tr>
         `;
 
-        data.forEach(order => {
-            table.innerHTML += `
-                <tr data-id="${order._id}">
-                    <td>${order.customerName}</td>
-                    <td>${order.email}</td>
-                    <td>₹${order.total}</td>
-                    <td>
-                        <select class="status-dropdown" data-id="${order._id}">
-                            <option ${order.status === "Pending" ? "selected" : ""}>Pending</option>
-                            <option ${order.status === "Shipped" ? "selected" : ""}>Shipped</option>
-                            <option ${order.status === "Delivered" ? "selected" : ""}>Delivered</option>
-                            <option ${order.status === "Cancelled" ? "selected" : ""}>Cancelled</option>
-                        </select>
-                    </td>
-                    <td>${new Date(order.date).toLocaleString()}</td>
-                </tr>
-            `;
-        });
+        // Replace the code inside your data.forEach loop with this:
+        table.innerHTML += `
+    <tr data-id="${order._id}">
+        <td>${order.customerName}</td>
+        <td>${order.email}</td>
+        <td>₹${order.total}</td>
+        <td><code style="color: #e83e8c;">${order.paymentId || 'N/A'}</code></td>
+        <td>
+            <select class="status-dropdown" data-id="${order._id}">
+                <option ${order.status === "Paid & Pending" ? "selected" : ""}>Paid & Pending</option>
+                <option ${order.status === "Pending" ? "selected" : ""}>Pending</option>
+                <option ${order.status === "Shipped" ? "selected" : ""}>Shipped</option>
+                <option ${order.status === "Delivered" ? "selected" : ""}>Delivered</option>
+                <option ${order.status === "Cancelled" ? "selected" : ""}>Cancelled</option>
+            </select>
+        </td>
+        <td>${new Date(order.date).toLocaleString()}</td>
+    </tr>
+`;
 
         // Attach event listeners to dropdowns
         document.querySelectorAll('.status-dropdown').forEach(dropdown => {
